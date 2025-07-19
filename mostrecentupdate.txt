@@ -1,0 +1,381 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+-- Utility functions from Infinite Yield
+local function getRoot(char)
+    return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
+end
+
+local function r15(plr)
+    if plr.Character then
+        local hum = plr.Character:FindFirstChildWhichIsA("Humanoid")
+        return hum and hum.RigType == Enum.HumanoidRigType.R15
+    end
+    return false
+end
+
+local function notify(title, text)
+    local gui = Instance.new("ScreenGui")
+    gui.Parent = CoreGui
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 250, 0, 100)
+    frame.Position = UDim2.new(1, -260, 1, -110)
+    frame.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
+    frame.BorderSizePixel = 0
+    frame.Parent = gui
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(1, 0, 0, 20)
+    titleLabel.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
+    titleLabel.Text = title
+    titleLabel.TextColor3 = Color3.new(1, 1, 1)
+    titleLabel.Font = Enum.Font.SourceSans
+    titleLabel.TextSize = 14
+    titleLabel.Parent = frame
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, -10, 1, -30)
+    textLabel.Position = UDim2.new(0, 5, 0, 25)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = text
+    textLabel.TextColor3 = Color3.new(1, 1, 1)
+    textLabel.Font = Enum.Font.SourceSans
+    textLabel.TextSize = 16
+    textLabel.TextWrapped = true
+    textLabel.Parent = frame
+    wait(3)
+    gui:Destroy()
+end
+
+-- Vehicle Fly variables
+local flying = false
+local controlModule = {}
+local speed = 1
+local speaker = Players.LocalPlayer
+
+-- ESP variables
+local espEnabled = false
+local espConnections = {}
+local espLabels = {}
+
+-- GUI Setup
+local gui = Instance.new("ScreenGui")
+gui.Name = "VehicleFlyESPGui"
+gui.Parent = CoreGui
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 300, 0, 180)
+frame.Position = UDim2.new(0, 10, 0, 10)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+frame.BorderSizePixel = 0
+frame.Parent = gui
+local uigradient = Instance.new("UIGradient")
+uigradient.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 40, 80)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 20, 60)), ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 10, 50))}
+uigradient.Parent = frame
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 15)
+uiCorner.Parent = frame
+local uiStroke = Instance.new("UIStroke")
+uiStroke.Thickness = 2
+uiStroke.Color = Color3.fromRGB(100, 50, 150)
+uiStroke.Transparency = 0.7
+uiStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+uiStroke.Parent = frame
+local glow = Instance.new("ImageLabel")
+glow.Size = UDim2.new(1, 20, 1, 20)
+glow.Position = UDim2.new(0, -10, 0, -10)
+glow.BackgroundTransparency = 1
+glow.Image = "rbxassetid://5028857472"
+glow.ImageColor3 = Color3.fromRGB(100, 50, 150)
+glow.ImageTransparency = 0.8
+glow.Parent = frame
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -30, 0, 40)
+title.Position = UDim2.new(0, 15, 0, 15)
+title.BackgroundColor3 = Color3.fromRGB(70, 40, 90)
+title.Text = "Made By @ghqn"
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
+title.TextWrapped = true
+uiCorner:Clone().Parent = title
+title.Parent = frame
+local flyButton = Instance.new("TextButton")
+flyButton.Size = UDim2.new(0, 240, 0, 50)
+flyButton.Position = UDim2.new(0, 30, 0, 65) -- Adjusted to 65 for better spacing
+flyButton.BackgroundColor3 = Color3.fromRGB(80, 50, 100)
+flyButton.Text = "Toggle Vehicle Fly: OFF"
+flyButton.TextColor3 = Color3.new(1, 1, 1)
+flyButton.Font = Enum.Font.Gotham
+flyButton.TextSize = 16
+uiCorner:Clone().Parent = flyButton
+flyButton.Parent = frame
+local espButton = Instance.new("TextButton")
+espButton.Size = UDim2.new(0, 240, 0, 50)
+espButton.Position = UDim2.new(0, 30, 0, 120) -- Adjusted to 120 for better spacing
+espButton.BackgroundColor3 = Color3.fromRGB(80, 50, 100)
+espButton.Text = "Toggle ESP: OFF"
+espButton.TextColor3 = Color3.new(1, 1, 1)
+espButton.Font = Enum.Font.Gotham
+espButton.TextSize = 16
+uiCorner:Clone().Parent = espButton
+espButton.Parent = frame
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.new(0, 35, 0, 35)
+closeButton.Position = UDim2.new(1, -50, 0, 15)
+closeButton.BackgroundColor3 = Color3.fromRGB(200, 40, 40)
+closeButton.Text = "X"
+closeButton.TextColor3 = Color3.new(1, 1, 1)
+closeButton.Font = Enum.Font.Gotham
+closeButton.TextSize = 16
+uiCorner:Clone().Parent = closeButton
+closeButton.Parent = frame
+
+-- GUI Toggle Variable
+local guiVisible = true
+
+-- Make GUI Movable
+local dragging, dragInput, dragStart, startPos
+local function update(input)
+    local delta = input.Position - dragStart
+    frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+title.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        update(input)
+    end
+end)
+
+-- Close Button Functionality
+closeButton.MouseButton1Click:Connect(function()
+    frame.Visible = false
+    guiVisible = false
+    notify("GUI Closed", "Press 'k' to reopen the GUI")
+end)
+
+-- Toggle GUI with 'k' key
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.K then
+        guiVisible = not guiVisible
+        frame.Visible = guiVisible
+        if not guiVisible then
+            notify("GUI Closed", "Press 'k' to reopen the GUI")
+        end
+    end
+end)
+
+-- Vehicle Fly functionality (adapted from Infinite Yield)
+local function setupVehicleFly(vehicle, hrp)
+    local bg = Instance.new("BodyGyro")
+    local bv = Instance.new("BodyVelocity")
+    bg.P = 9e4
+    bg.Parent = vehicle
+    bv.Parent = vehicle
+    bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bg.CFrame = vehicle.CFrame
+    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+    bv.Velocity = Vector3.new(0, 0.1, 0)
+    controlModule.bg = bg
+    controlModule.bv = bv
+    local speedVal = Instance.new("NumberValue")
+    speedVal.Name = "speedVal"
+    speedVal.Parent = vehicle
+    speedVal.Value = speed
+    local yVal = Instance.new("NumberValue")
+    yVal.Name = "yVal"
+    yVal.Parent = vehicle
+    yVal.Value = vehicle.Position.Y
+    spawn(function()
+        while flying and vehicle and vehicle.Parent do
+            if controlModule.f then
+                vehicle.Velocity = vehicle.CFrame.LookVector * speedVal.Value
+            elseif controlModule.b then
+                vehicle.Velocity = vehicle.CFrame.LookVector * -speedVal.Value
+            end
+            if controlModule.l then
+                vehicle.Velocity = vehicle.CFrame.RightVector * -speedVal.Value
+            elseif controlModule.r then
+                vehicle.Velocity = vehicle.CFrame.RightVector * speedVal.Value
+            end
+            if controlModule.u then
+                vehicle.Position = vehicle.Position + Vector3.new(0, speedVal.Value / 50, 0)
+            elseif controlModule.d then
+                vehicle.Position = vehicle.Position + Vector3.new(0, -speedVal.Value / 50, 0)
+            end
+            wait()
+        end
+    end)
+end
+
+local function vehicleFly(args)
+    if not speaker.Character or not getRoot(speaker.Character) then
+        return
+    end
+    flying = true
+    speed = args and tonumber(args[1]) or 1
+    local vehicle = getRoot(speaker.Character).Parent
+    local hrp = getRoot(speaker.Character)
+    if vehicle == workspace then
+        notify("Vehicle Fly", "You need to be sitting in a vehicle!")
+        flying = false
+        return
+    end
+    setupVehicleFly(vehicle, hrp)
+    controlModule.connection = UserInputService.InputBegan:Connect(function(input, processed)
+        if processed then
+            return
+        end
+        if input.KeyCode == Enum.KeyCode.W then
+            controlModule.f = true
+        elseif input.KeyCode == Enum.KeyCode.S then
+            controlModule.b = true
+        elseif input.KeyCode == Enum.KeyCode.A then
+            controlModule.l = true
+        elseif input.KeyCode == Enum.KeyCode.D then
+            controlModule.r = true
+        elseif input.KeyCode == Enum.KeyCode.Space then
+            controlModule.u = true
+        elseif input.KeyCode == Enum.KeyCode.LeftControl then
+            controlModule.d = true
+        end
+    end)
+    controlModule.connection2 = UserInputService.InputEnded:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.W then
+            controlModule.f = false
+        elseif input.KeyCode == Enum.KeyCode.S then
+            controlModule.b = false
+        elseif input.KeyCode == Enum.KeyCode.A then
+            controlModule.l = false
+        elseif input.KeyCode == Enum.KeyCode.D then
+            controlModule.r = false
+        elseif input.KeyCode == Enum.KeyCode.Space then
+            controlModule.u = false
+        elseif input.KeyCode == Enum.KeyCode.LeftControl then
+            controlModule.d = false
+        end
+    end)
+    notify("Vehicle Fly", "Started!")
+end
+
+local function unvehicleFly()
+    flying = false
+    if controlModule.bg then
+        controlModule.bg:Destroy()
+    end
+    if controlModule.bv then
+        controlModule.bv:Destroy()
+    end
+    if controlModule.connection then
+        controlModule.connection:Disconnect()
+    end
+    if controlModule.connection2 then
+        controlModule.connection2:Disconnect()
+    end
+    local vehicle = getRoot(speaker.Character).Parent
+    if vehicle and vehicle ~= workspace then
+        if vehicle:FindFirstChild("speedVal") then
+            vehicle.speedVal:Destroy()
+        end
+        if vehicle:FindFirstChild("yVal") then
+            vehicle.yVal:Destroy()
+        end
+    end
+    notify("Vehicle Fly", "Stopped!")
+end
+
+-- ESP functionality
+local function createESP(player)
+    if player == speaker or not player.Character or not getRoot(player.Character) then
+        return
+    end
+    local head = player.Character:FindFirstChild("Head")
+    if not head then
+        return
+    end
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "ESP_" .. player.Name
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 100, 0, 50)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = CoreGui
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = player.Name
+    nameLabel.TextColor3 = Color3.new(1, 1, 1)
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.Font = Enum.Font.SourceSans
+    nameLabel.TextSize = 16
+    nameLabel.Parent = billboard
+    espLabels[player] = billboard
+end
+
+local function removeESP(player)
+    if espLabels[player] then
+        espLabels[player]:Destroy()
+        espLabels[player] = nil
+    end
+end
+
+local function toggleESP()
+    if espEnabled then
+        espEnabled = false
+        for _, connection in pairs(espConnections) do
+            connection:Disconnect()
+        end
+        espConnections = {}
+        for player, _ in pairs(espLabels) do
+            removeESP(player)
+        end
+        espButton.Text = "Toggle ESP: OFF"
+        notify("ESP", "Disabled")
+    else
+        espEnabled = true
+        for _, player in pairs(Players:GetPlayers()) do
+            createESP(player)
+        end
+        espConnections[#espConnections + 1] = Players.PlayerAdded:Connect(function(player)
+            player.CharacterAdded:Connect(function()
+                wait(1)
+                createESP(player)
+            end)
+        end)
+        espConnections[#espConnections + 1] = Players.PlayerRemoving:Connect(function(player)
+            removeESP(player)
+        end)
+        espButton.Text = "Toggle ESP: ON"
+        notify("ESP", "Enabled")
+    end
+end
+
+-- Button connections
+flyButton.MouseButton1Click:Connect(function()
+    if flying then
+        unvehicleFly()
+        flyButton.Text = "Toggle Vehicle Fly: OFF"
+    else
+        vehicleFly()
+        flyButton.Text = "Toggle Vehicle Fly: ON"
+    end
+end)
+
+espButton.MouseButton1Click:Connect(function()
+    toggleESP()
+end)
